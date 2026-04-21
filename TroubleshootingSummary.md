@@ -9,127 +9,8 @@
 - PLC 순차제어처럼 Output 명령과 Input 피드백을 분리한다.
 - 면접에서 C# 적응력, PLC 제어 사고방식, 디버깅 과정을 설명할 수 있게 한다.
 
-## 1. Unity 관리자 권한 실행 경고
-
-### 문제
-
-Unity 실행 시 다음 경고가 표시되었습니다.
-
-```text
-Unity is running with Administrator privileges, which is not supported.
-```
-
-### 발생 원인
-
-Unity Editor가 관리자 권한으로 실행되고 있었습니다. Unity는 프로젝트 내부의 C# 스크립트, 네이티브 라이브러리, 외부 에셋 코드를 실행할 수 있으므로 관리자 권한으로 실행하면 시스템 파일 변경, 데이터 손실, 전역 설정 변경 같은 위험이 커집니다.
-
-### 해결 방법
-
-- Unity Hub와 Unity Editor를 일반 사용자 권한으로 실행하도록 안내했습니다.
-- 프로젝트 폴더 권한 문제를 관리자 권한 실행으로 해결하지 않도록 방향을 잡았습니다.
-
-### 결과
-
-경고의 의미를 이해했고, 이후 프로젝트 작업은 일반 권한 실행을 기준으로 진행하기로 했습니다.
-
-## 2. Unity Safe Mode 및 컴파일 오류
-
-### 문제
-
-프로젝트 열기 시 Safe Mode 안내와 함께 컴파일 오류가 발생했습니다.
-
-```text
-The project you are opening contains compilation errors.
-```
-
-예시 오류:
-
-```text
-Argument 3: cannot convert from 'UnityEngine.Material' to 'UnityEngine.Color'
-```
-
-### 발생 원인
-
-씬 생성용 Editor 스크립트에서 메서드 인자로 `Color`가 필요한 위치에 `Material`을 넘기는 타입 불일치가 있었습니다.
-
-### 해결 방법
-
-- 컴파일 오류가 나는 Editor 스크립트의 인자 타입을 확인했습니다.
-- `Material`과 `Color` 사용 위치를 분리했습니다.
-- Unity Safe Mode는 에러 수정용 모드이며, 무시하고 열면 프로젝트가 깨진 상태로 import될 수 있음을 확인했습니다.
-
-### 결과
-
-컴파일 오류를 수정한 뒤 Unity가 정상적으로 프로젝트를 열 수 있게 되었습니다.
-
-## 3. Unity 6000.4와 realvirtual 버전 호환성 문제
-
-### 문제
-
-Unity 6000.4.2f1에서 realvirtual이 지원하지 않는 버전이라는 경고가 발생했습니다.
-
-```text
-Unity 6000.4.2f1 is newer than the supported versions for realvirtual.
-Supported Unity versions:
-- Unity 2022.3 LTS
-- Unity 6.0 LTS only
-```
-
-### 발생 원인
-
-realvirtual이 Unity 6.1 이상 또는 Unity 6000.4 계열을 공식 지원하지 않았습니다. 이후 패키지 의존성, URP 타입 누락, Lifecycle 오류, Drive NullReference 등 여러 불안정 증상이 이어질 수 있었습니다.
-
-### 해결 방법
-
-- realvirtual의 3D 모델만 쓰더라도, 내부 Drive, Gripper, Sensor, PLC Signal 컴포넌트를 함께 쓰면 버전 호환성 영향을 받을 수 있음을 확인했습니다.
-- Unity 6.0 LTS 계열로 낮추는 방향으로 결정했습니다.
-
-### 결과
-
-Unity 버전 호환성 문제를 프로젝트 리스크로 인식했고, realvirtual을 활용할 때는 지원 Unity 버전을 맞추는 것이 중요하다는 결론을 얻었습니다.
-
-## 4. Input System 설정 오류
-
-### 문제
-
-realvirtual import 직후 다음 오류가 발생했습니다.
-
-```text
-InvalidOperationException: You are trying to read Input using the UnityEngine.Input class,
-but you have switched active Input handling to Input System package in Player Settings.
-```
-
-### 발생 원인
-
-프로젝트 Player Settings의 Active Input Handling이 New Input System 위주로 설정되어 있는데, realvirtual의 일부 스크립트는 기존 `UnityEngine.Input` API를 사용하고 있었습니다.
-
-### 해결 방법
-
-- Unity Player Settings에서 Active Input Handling을 old input과 호환되도록 조정했습니다.
-
-### 결과
-
-realvirtual 데모 씬이 정상 실행되었고, 이후 `DemoRealvirtualOld` 기반으로 PLC control 씬을 구성할 수 있었습니다.
-
-## 5. realvirtual 기본 안내 UI 자동 표시 문제
-
-### 문제
-
-Play 시 realvirtual 안내 UI가 자동으로 표시되었습니다.
-
-### 발생 원인
-
-Demo scene에 포함된 realvirtual 기본 UI/안내 오브젝트가 활성화되어 있었습니다.
-
-### 해결 방법
-
-- Demo용 안내 UI가 자동 표시되지 않도록 씬 구성에서 제거 또는 비활성화했습니다.
-
-### 결과
-
-Play 시 제어 데모 화면에 집중할 수 있게 되었습니다.
-
-## 6. Y축으로 이동하지 않는 문제
+  
+## 1. Y축으로 이동하지 않는 문제
 
 ### 문제
 
@@ -167,7 +48,7 @@ drive.SmoothAcceleration = false;
 
 Gantry Y축이 정상적으로 움직였고, 캔을 들어 올린 뒤 박스 위치로 이동하는 흐름이 가능해졌습니다.
 
-## 7. 캔 적재 후 불필요한 동작이 반복되는 문제
+## 2. 캔 적재 후 불필요한 동작이 반복되는 문제
 
 ### 문제
 
@@ -211,7 +92,7 @@ Gantry Y축이 정상적으로 움직였고, 캔을 들어 올린 뒤 박스 위
 
 이전 명령 잔상과 Drive Target 불일치 문제를 줄였고, 상태 전이 디버깅이 가능해졌습니다. 다만 이후 별도의 신호 충돌 문제가 발견되어 추가 분석을 진행했습니다.
 
-## 8. 그리퍼 완료 확인 없이 다음 동작으로 넘어가는 문제
+## 3. 그리퍼 완료 확인 없이 다음 동작으로 넘어가는 문제
 
 ### 문제
 
@@ -262,7 +143,7 @@ WaitingForCan
 
 제어 구조가 PLC식 설명에 가까워졌습니다. 다만 실제 `gripperOpened`가 물리적 완료 피드백인지, 명령을 거의 즉시 따라오는 신호인지 별도 검증이 필요하다는 점도 확인했습니다.
 
-## 9. OpenGripper 상태에서 Z축이 올라가는 문제
+## 4. OpenGripper 상태에서 Z축이 올라가는 문제
 
 ### 문제
 
@@ -348,7 +229,7 @@ private void DisableLegacyHandlingControllers()
 같은 Gantry PLC 신호를 동시에 제어하면서 발생한 신호 충돌
 ```
 
-## 10. 박스 컨베이어가 다음 줄로 이동하지 않는 문제
+## 5. 박스 컨베이어가 다음 줄로 이동하지 않는 문제
 
 ### 문제
 
@@ -397,7 +278,7 @@ private void DisableLegacyBoxConveyorControllers()
 
 기존 `PLC_BoxConveyor`가 PLC-style 컨트롤러의 `startConveyor` 출력을 덮어쓰지 않게 되었고, 한 줄 적재 완료 후 박스 컨베이어가 다음 줄 위치로 이동하는 동작이 복구되었습니다.
 
-## 11. 최종 원인 구조
+## 최종 원인 구조
 
 최종적으로 가장 중요한 원인은 다음이었습니다.
 
@@ -415,7 +296,7 @@ realvirtual 기존 PLC 스크립트와 새 PLC-style C# 스크립트가
 | Gantry Handling | `PLC_Handling` | `HandlingController` | `GantryYDestination`, `GantryZDestination`, `GantryYStart`, `GantryZStart`, `OpenGripper`, `CloseGripper` |
 | Box Conveyor | `PLC_BoxConveyor` | `BoxConveyorController` | `StartConveyor`, `StartConveyorBackwards`, Box row movement request |
 
-## 12. 최종 해결 전략
+## 최종 해결 전략
 
 최종적으로 다음 전략을 적용했습니다.
 
@@ -425,27 +306,9 @@ realvirtual 기존 PLC 스크립트와 새 PLC-style C# 스크립트가
 4. 한 PLC Signal은 하나의 컨트롤러만 제어하도록 한다.
 5. Inspector 디버그 필드를 추가해 상태머신, 목표 위치, 실제 위치, Drive 상태, Output/Input 상태를 동시에 확인한다.
 
-## 13. 면접 설명 포인트
 
-면접에서는 다음처럼 설명할 수 있습니다.
 
-> realvirtual의 설비 모델과 PLC Signal 컴포넌트는 활용하되, 제어 로직은 C# 상태머신으로 직접 구성했습니다.  
-> 각 Step에서 Output 명령과 Input 피드백을 분리했고, 문제가 발생했을 때 Inspector에 디버그 필드를 추가해 신호, 위치, Drive Target, 상태 전이를 추적했습니다.  
-> 최종적으로 기존 realvirtual PLC 스크립트와 제가 작성한 PLC-style 컨트롤러가 같은 PLC Signal을 동시에 제어하면서 생긴 충돌을 발견했고, 기존 PLC 스크립트를 비활성화하여 하나의 신호는 하나의 컨트롤러만 담당하도록 정리했습니다.
-
-## 14. 관련 파일
-
-- `Assets/CSharpPlcMiniProject/Scripts/Handling/HandlingController.cs`
-- `Assets/CSharpPlcMiniProject/Scripts/Handling/HandlingStep.cs`
-- `Assets/CSharpPlcMiniProject/Scripts/BoxLine/BoxConveyorController.cs`
-- `Assets/CSharpPlcMiniProject/Scripts/CanLine/CanConveyorController.cs`
-- `Assets/CSharpPlcMiniProject/Scripts/Robot/RobotController.cs`
-- `Assets/CSharpPlcMiniProject/Editor/CreateDemoRealvirtualOldScene.cs`
-- `Assets/Scenes/DemoRealvirtualOld_CleanControl.unity`
-
-참고: 씬 파일명은 기존 작업 이력과 Unity 참조 안정성을 위해 그대로 두었고, 스크립트 이름은 `CanConveyorController`, `HandlingController`, `BoxConveyorController`, `RobotController`로 정리했습니다.
-
-## 15. 배운 점
+## 배운 점
 
 - Unity에서 Play 화면의 움직임만 보면 원인을 착각하기 쉽다.
 - Inspector에 상태, 명령, 피드백, Drive Target을 분리해서 표시하면 원인을 훨씬 빨리 좁힐 수 있다.
