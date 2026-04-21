@@ -3,6 +3,10 @@
 이 문서는 `CSharpPlcMiniProject`의 전체 구조와 참조 관계를 설명합니다.  
 목표는 Unity 씬을 다시 열었을 때 “어떤 스크립트가 무엇을 제어하고, 어떤 신호를 주고받는지” 빠르게 파악하는 것입니다.
 
+
+# 동작영상 
+<img width="1048" height="622" alt="13-17-22+(1)" src="https://github.com/user-attachments/assets/54e970b8-6976-4cd4-aab3-eb47f519df26" />
+
 ## 1. 전체 설계 방향
 
 이 프로젝트는 realvirtual 데모 씬의 설비 모델을 그대로 활용하되, 기존 데모 PLC 스크립트 대신 직접 작성한 C# PLC-style controller가 공정 제어를 담당하도록 구성했습니다.
