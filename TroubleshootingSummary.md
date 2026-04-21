@@ -1,4 +1,4 @@
-<img width="1022" height="605" alt="19-30-44+(1)" src="https://github.com/user-attachments/assets/7e0d782b-fb43-41d3-8227-30835cb8d52e" />﻿# C# PLC Mini Project Troubleshooting Summary
+﻿# C# PLC Mini Project Troubleshooting Summary
 
 이 문서는 Unity와 realvirtual 기반의 `DemoRealvirtualOld_CleanControl` 씬을 PLC식 C# 제어 구조로 정리하면서 발생한 주요 문제, 원인 분석, 시도한 해결 방법, 최종 결과를 기록한 문서입니다.
 
