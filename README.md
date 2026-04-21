@@ -429,74 +429,7 @@ flowchart LR
     Robot -->|"cycleActive"| Box
 ```
 
-## 7. 기존 realvirtual PLC 스크립트와의 관계
-
-기존 Demo scene에는 realvirtual의 데모용 PLC 스크립트가 포함되어 있습니다.
-
-대표 예:
-
-- `PLC_Handling`
-- `PLC_BoxConveyor`
-- `PLC_Robot`
-
-이번 프로젝트에서는 기존 스크립트의 제어 로직을 그대로 사용하지 않고, PLC-style controller가 제어를 담당합니다.
-
-따라서 다음 충돌을 방지해야 합니다.
-
-| 기존 스크립트 | PLC-style 스크립트 | 충돌 가능 신호 |
-| --- | --- | --- |
-| `PLC_Handling` | `HandlingController` | Gantry Destination, Start, Gripper Open/Close |
-| `PLC_BoxConveyor` | `BoxConveyorController` | StartConveyor, StartConveyorBackwards |
-
-현재 처리:
-
-```text
-HandlingController
--> DisableLegacyHandlingControllers()
--> PLC_Handling 비활성화
-
-BoxConveyorController
--> DisableLegacyBoxConveyorControllers()
--> PLC_BoxConveyor 비활성화
-```
-
-중요한 원칙:
-
-```text
-한 PLC Signal은 한 controller만 써야 한다.
-```
-
-## 8. 씬 생성 스크립트
-
-파일:
-
-`Assets/CSharpPlcMiniProject/Editor/CreateDemoRealvirtualOldScene.cs`
-
-역할:
-
-- 기존 `DemoRealvirtualOld` 씬의 realvirtual 장비와 신호를 기반으로 PLC control 씬을 생성합니다.
-- 기존 PLC 스크립트가 갖고 있던 Signal 참조와 위치 설정값을 PLC-style controller로 복사합니다.
-- 생성되는 씬:
-
-```text
-Assets/Scenes/DemoRealvirtualOld_CleanControl.unity
-```
-
-
-Unity 메뉴:
-
-```text
-Tools > C# PLC Mini Project > Create DemoRealvirtualOld PLC Scene
-```
-
-이 스크립트의 핵심 역할:
-
-- 기존 realvirtual 모델은 유지
-- PLC controller GameObject 추가
-- PLC Signal 참조 연결
-- Gantry/Box/Robot 제어 스크립트를 PLC-style 버전으로 교체
-
-## 9. 실행 시 데이터 흐름 예시
+## 7. 실행 시 데이터 흐름 예시
 
 ### 캔 하나를 박스에 적재하는 흐름
 
@@ -550,57 +483,9 @@ Tools > C# PLC Mini Project > Create DemoRealvirtualOld PLC Scene
    - 새 박스 공급 흐름으로 복귀
 ```
 
-## 10. 디버깅할 때 먼저 볼 항목
 
-### Gantry 동작이 이상할 때
 
-`HandlingController` Inspector에서 확인:
 
-- `Current Step`
-- `Last Command`
-- `Last Command Source`
-- `Gantry Y Position Status`
-- `Gantry Z Position Status`
-- `Target Y Position Status`
-- `Target Z Position Status`
-- `Gantry Y Destination Signal Status`
-- `Gantry Z Destination Signal Status`
-- `Gantry Y Drive Target Position Status`
-- `Gantry Z Drive Target Position Status`
-- `Gantry Y Command Accepted Status`
-- `Gantry Z Command Accepted Status`
 
-### 박스 컨베이어가 움직이지 않을 때
 
-`BoxConveyorController` Inspector에서 확인:
-
-- `driveNextRow`
-- `nextRowDistance`
-- `boxChangeCycle`
-- `startConveyor`
-- `startConveyorBackwards`
-- `sensorGantryOccupied`
-- `sensorRobotOccupied`
-- `conveyorPosition`
-
-### 로봇 배출이 안 될 때
-
-`RobotController` Inspector에서 확인:
-
-- `startCycle`
-- `cycleActive`
-- `currentStep`
-- `robotAnimator`
-- `gripper`
-- `gripperOpened`
-- `gripperClosed`
-- `axis6Rotation`
-- `unloadedCanCount`
-
-## 11. 현재 구조의 장점
-
-- realvirtual의 설비 모델을 재사용하면서 제어 코드는 직접 작성했습니다.
-- PLC식 순차제어 구조를 C# 상태머신으로 표현했습니다.
-- 신호 충돌 원인을 분리하고, 기존 demo PLC를 비활성화했습니다.
-- 면접에서 설명하기 쉬운 구조입니다.
 
