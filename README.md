@@ -332,17 +332,6 @@ stateDiagram-v2
     MoveToWaitPosition --> Waiting: return animation finished
 ```
 
-### 4.5 `RealvirtualIntroSuppressor`
-
-파일:
-
-`Assets/CSharpPlcMiniProject/Scripts/Common/RealvirtualIntroSuppressor.cs`
-
-역할:
-
-- Play 시작 시 realvirtual 안내 UI가 자동으로 뜨지 않도록 숨깁니다.
-- 씬 로드 후 임시 GameObject를 만들고, 몇 프레임 동안 안내 UI Text를 찾아 비활성화합니다.
-
 ## 5. 컨트롤러 간 참조 관계
 
 ```mermaid
