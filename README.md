@@ -600,8 +600,3 @@ Tools > C# PLC Mini Project > Create DemoRealvirtualOld PLC Scene
 - 신호 충돌 원인을 분리하고, 기존 demo PLC를 비활성화했습니다.
 - 면접에서 설명하기 쉬운 구조입니다.
 
-설명 문장 예시:
-
-> realvirtual의 Drive, Sensor, Gripper, PLC Signal은 설비 모델로 활용했고, 제어 로직은 직접 작성한 C# 상태머신으로 분리했습니다.  
-> 캔 공급, Gantry handling, 박스 컨베이어, 로봇 배출을 각각 독립 controller로 나누고, controller 간에는 필요한 요청 신호만 주고받도록 구성했습니다.  
-> 기존 realvirtual demo PLC 스크립트와 신호 충돌이 발생했기 때문에, 한 PLC Signal은 하나의 PLC-style controller만 담당하도록 기존 PLC 스크립트를 비활성화했습니다.
