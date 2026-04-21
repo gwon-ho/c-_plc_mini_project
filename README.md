@@ -1,7 +1,7 @@
 # C# PLC Mini Project System Architecture
 
 이 문서는 `CSharpPlcMiniProject`의 전체 구조와 참조 관계를 설명합니다.  
-목표는 Unity 씬을 다시 열었을 때 “어떤 스크립트가 무엇을 제어하고, 어떤 신호를 주고받는지” 빠르게 파악하는 것입니다.
+목표는 Unity 에서 C#스크립트를 통해 PLC 제어를 할 때 “어떤 스크립트가 무엇을 제어하고, 어떤 신호를 주고받는지” 빠르게 파악하는 것입니다.
 
 
 # 동작영상 
