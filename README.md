@@ -299,7 +299,7 @@ BoxConveyorController
 | `robotAxis6` | Object Reference | 박스 기울임 각도 확인용 축 |
 | `gripperOpen` | Output | 로봇 그리퍼 열기 |
 | `gripperClose` | Output | 로봇 그리퍼 닫기 |
-| `plcStartCycle` | Output | realvirtual 측 로봇 사이클 시작 신호 |
+| `plcStartCycle` | Output | 로봇 사이클 시작 신호 |
 | `gripperOpened` | Input | 로봇 그리퍼 열림 피드백 |
 | `gripperClosed` | Input | 로봇 그리퍼 닫힘 피드백 |
 | `plcCycleActive` | Input | 로봇 사이클 진행 상태 |
