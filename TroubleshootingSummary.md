@@ -7,9 +7,8 @@
 - realvirtual의 3D 모델, Drive, Gripper, Sensor, PLC Signal 컴포넌트는 활용한다.
 - 공정 제어 로직은 직접 작성한 C# 스크립트로 구성한다.
 - PLC 순차제어처럼 Output 명령과 Input 피드백을 분리한다.
-- 면접에서 C# 적응력, PLC 제어 사고방식, 디버깅 과정을 설명할 수 있게 한다.
 
-  
+
 ## 1. Y축으로 이동하지 않는 문제
 
 ### 문제
