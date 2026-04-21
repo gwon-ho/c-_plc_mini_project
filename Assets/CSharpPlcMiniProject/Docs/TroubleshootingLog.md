@@ -1,0 +1,149 @@
+﻿# C# PLC Mini Project Troubleshooting Log
+
+이 문서는 `DemoRealvirtualOld_CleanControl` 씬에서 핸들링 장치 제어 로직을 직접 구현하면서 발생한 주요 문제, 원인 분석, 해결책을 정리한 기록이다.
+
+프로젝트 방향은 realvirtual의 3D 모델과 기본 Drive/PLC 신호 컴포넌트를 활용하되, 공정 제어 로직은 `HandlingController` 같은 C# 스크립트에서 PLC 스타일 상태 머신으로 직접 작성하는 것이다.
+
+## 1. Y축으로 이동이 안 된 문제
+
+### 증상
+
+- 캔을 감지하고 그리퍼 동작까지는 진행되지만, 캔을 들고 박스 쪽으로 이동해야 하는 시점에서 Y축 Gantry가 움직이지 않았다.
+- Inspector에서는 `Target Y Position Status`와 `Gantry Y Destination Signal Status`에 목표값이 들어갔지만, 실제 `Gantry Y Position Status`는 변하지 않았다.
+- `Gantry Y Drive Target Position Status`는 430 같은 목표 위치로 갱신되었지만, `Gantry Y Drive Is Running Status`가 켜지지 않았다.
+- `Target Start Move`를 Inspector에서 수동으로 체크해도 바로 다시 꺼졌다.
+
+### 원인
+
+- `Target Start Move`가 수동으로 체크되지 않는 것은 `Drive_DestinationMotor`가 매 프레임 `GantryYStart` PLC 신호 값을 `Drive.TargetStartMove`에 덮어쓰기 때문이었다.
+- 실제 이동이 시작되지 않은 핵심 원인은 `GantryY` Drive의 `Smooth Acceleration` 옵션이었다.
+- realvirtual Free/기본 버전에서는 Smooth Acceleration이 Professional 기능이라 정상적으로 동작하지 않을 수 있고, 이 때문에 목표 위치는 들어가지만 Drive가 출발하지 않는 상태가 발생했다.
+
+### 해결책
+
+- `HandlingController.ResolveMissingSignals()`에서 `GantryY`, `GantryZ` Drive를 자동으로 찾도록 했다.
+- 찾은 Drive에 대해 런타임에서 `SmoothAcceleration = false`를 적용했다.
+- 디버깅을 위해 실제 Drive 참조와 상태를 Inspector에서 볼 수 있도록 다음 필드를 추가했다.
+  - `Gantry Y Drive`
+  - `Gantry Z Drive`
+  - `Gantry Y Drive Target Position Status`
+  - `Gantry Z Drive Target Position Status`
+  - `Gantry Y Drive Is Running Status`
+  - `Gantry Z Drive Is Running Status`
+  - `Gantry Y Drive Smooth Acceleration Status`
+  - `Gantry Z Drive Smooth Acceleration Status`
+
+### 결과
+
+- `SmoothAcceleration`을 끈 뒤 Y축 이동이 정상적으로 시작되었다.
+- 캔을 컨베이어에서 들어 올린 뒤 박스 쪽으로 이동하는 기본 흐름이 동작하게 되었다.
+
+## 2. 캔을 바구니에 적재 후 이상한 동작이 반복되는 문제
+
+### 증상
+
+- 캔을 박스에 내려놓고, 안전 높이로 올라간 뒤 정상적으로 픽업 위치로 복귀해야 했다.
+- 하지만 실제로는 캔을 놓은 뒤 올라갔다가 다시 내려가거나, 컨베이어 쪽으로 가다가 다시 박스 쪽으로 이동하는 등 불필요한 동작이 섞여 보였다.
+- 같은 동작이 반복되면서 상태 머신의 Step 전환 타이밍이 꼬인 것처럼 보였다.
+
+### 원인 분석
+
+- 처음에는 `GantryYAtDestination`, `GantryZAtDestination` 같은 PLC 도착 신호가 이전 이동의 true 값을 잠깐 유지해서 `LoaderAtDestination()`이 너무 빨리 true가 되는 것으로 판단했다.
+- realvirtual의 `Drive_DestinationMotor`는 `Drive.IsAtTarget` 값을 PLC Input Bool에 반영하는데, 이 값은 Unity FixedUpdate 타이밍에 따라 한 프레임 늦게 갱신될 수 있다.
+- 따라서 C# 상태 머신이 새 이동 명령을 내린 직후, 아직 실제 위치가 바뀌지 않았는데 이전 도착 신호를 보고 다음 Step으로 넘어갈 가능성이 있었다.
+
+### 해결책
+
+- `LoaderAtDestination()`에서 PLC 도착 신호만 믿지 않고, 실제 Drive 상태와 현재 위치를 함께 확인하도록 변경했다.
+- Drive가 연결되어 있으면 아래 조건을 우선 사용하도록 했다.
+
+```csharp
+drive.IsAtTarget && Mathf.Abs(drive.CurrentPosition - target) <= positionTolerance
+```
+
+- 이를 위해 `AxisAtTarget()` 헬퍼 메서드를 추가했다.
+- 새 이동 명령 직후 바로 도착 판정을 하지 않도록 `minimumMoveSettleSeconds`를 추가했다.
+- `MoveLoaderTo()`에서 목표 위치를 저장하고, 도착 판정 시 현재 명령의 목표값과 실제 위치를 비교하게 했다.
+
+### 결과
+
+- 이전 도착 피드백이 남아 있어 Step이 너무 빨리 넘어가는 문제를 줄였다.
+- 다만 이후에도 캔을 놓은 뒤 같은 위치로 한 번 더 내려가는 별도 증상이 남아 있어, 다음 문제로 분리해서 추적했다.
+
+## 3. 캔을 바구니에 적재 후 같은 위치로 한 번 더 내려가는 문제
+
+### 증상
+
+- 캔을 박스에 내려놓고 그리퍼를 연 뒤, 안전 높이로 올라가는 동작은 정상적으로 수행되었다.
+- 이후 컨베이어 픽업 위치로 복귀해야 하는데, 같은 박스 위치에서 한 번 더 내려가는 것처럼 보이는 동작이 반복되었다.
+- Inspector에서 확인한 한 시점에는 다음과 같은 상태가 보였다.
+  - `Current Step = Lift After Place`
+  - `Last Command = Move Y=530.0, Z=0.0`
+  - `Gantry Z Position Status`가 289 근처에서 0으로 이동 중
+  - `Target Z Position Status = 0`
+
+### 원인 분석
+
+- 스크린샷 기준으로 `Lift After Place`에서 `Z=0`으로 올라가는 명령 자체는 정상이다.
+- 하지만 사용자가 관찰한 “같은 위치에서 한 번 더 내려감”은 다음 픽업 사이클이 너무 빨리 시작되면서 발생할 가능성이 높다.
+- 기존 `WaitingForCan` 단계는 `sensorCan`이 ON이면 즉시 다음 픽업 명령을 내렸다.
+
+```text
+WaitingForCan
+-> sensorCan ON
+-> MoveLoaderTo(pickCanPosY, pickCanPosZ)
+```
+
+- 컨베이어 센서가 이전 캔 또는 다음 캔 때문에 계속 ON 상태로 유지되면, 로더가 복귀하자마자 바로 다음 픽업 하강 명령이 발생할 수 있다.
+- 실제 PLC 제어에서는 이런 경우 센서가 계속 ON인지가 아니라, OFF를 한 번 거친 뒤 다시 ON 되는 상승엣지를 사이클 시작 조건으로 사용하는 경우가 많다.
+
+### 해결책
+
+- `WaitingForCan`에서 바로 픽업을 시작하지 않고, 먼저 로더가 실제 픽업 대기 위치에 있는지 확인하도록 했다.
+
+```text
+Y = pickCanPosY
+Z = transportCanPosZ
+```
+
+- 이를 위해 다음 디버그 상태와 헬퍼를 추가했다.
+  - `Loader Ready For Pick Status`
+  - `LoaderPositionMatches()`
+  - `AxisPositionMatches()`
+
+- 캔 하나를 적재한 뒤에는 `waitingForCanSensorReset` 플래그를 켜서, 다음 사이클 시작 전에 `sensorCan`이 한 번 OFF 되는 것을 기다리도록 했다.
+- 이를 Inspector에서 확인할 수 있도록 `Waiting For Can Sensor Reset Status`를 추가했다.
+
+### 현재 상태
+
+- 코드상으로는 다음 픽업 조건을 더 엄격하게 만들었다.
+
+```text
+1. 로더가 픽업 대기 위치에 있어야 함
+2. 이전 캔 감지 이후 sensorCan이 한 번 OFF 되어야 함
+3. 이후 sensorCan이 다시 ON 되면 다음 픽업 시작
+```
+
+- 만약 같은 증상이 계속 반복된다면 다음 확인 대상은 아래와 같다.
+  - 실제 하강 순간의 `Current Step`
+  - 실제 하강 순간의 `Last Command`
+  - `Waiting For Can Sensor Reset Status`
+  - `Loader Ready For Pick Status`
+  - `Gantry Y Position Status`
+  - `Gantry Z Position Status`
+  - 씬 안에 기존 realvirtual demo용 컨트롤러가 남아 같은 PLC 신호를 쓰고 있는지 여부
+
+## 관련 주요 파일
+
+- `Assets/CSharpPlcMiniProject/Scripts/Handling/HandlingController.cs`
+- `Assets/CSharpPlcMiniProject/Scripts/Handling/HandlingStep.cs`
+- `Assets/Scenes/DemoRealvirtualOld_CleanControl.unity`
+
+참고: 씬 파일명은 기존 작업 이력 때문에 유지했고, 현재 제어 스크립트 이름은 `HandlingController` 기준으로 정리했다.
+
+## 면접 설명 포인트
+
+- realvirtual의 3D 모델과 Drive 컴포넌트는 활용하되, 제어 시퀀스는 C# 상태 머신으로 직접 구성했다.
+- PLC 스타일로 Output 신호는 명령, Input 신호는 피드백으로 분리했다.
+- 문제 발생 시 Inspector에 디버그 상태값을 추가해서 신호, 위치, Drive 상태를 단계적으로 추적했다.
+- 단순히 동작만 맞춘 것이 아니라, 센서 잔류 신호와 피드백 갱신 타이밍을 고려해 상태 전환 조건을 보강했다.

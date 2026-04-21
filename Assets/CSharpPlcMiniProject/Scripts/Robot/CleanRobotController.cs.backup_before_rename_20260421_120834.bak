@@ -1,0 +1,319 @@
+// realvirtual의 PLC 신호, Grip, MU, ControlLogic 타입을 사용하기 위한 네임스페이스입니다.
+using realvirtual;
+// Unity의 GameObject, Animator, SelectionBase 같은 기능을 사용하기 위한 네임스페이스입니다.
+using UnityEngine;
+
+// 로봇 제어 코드를 프로젝트 전용 네임스페이스로 묶습니다.
+namespace CSharpPlcMiniProject.Robot
+{
+    // 씬에서 이 컴포넌트를 선택하면 루트 오브젝트가 선택되도록 돕는 Unity 속성입니다.
+    [SelectionBase]
+    // 박스 처리 로봇을 PLC 시퀀스처럼 제어하는 클래스입니다.
+    public sealed class CleanRobotController : ControlLogic
+    {
+        // 인스펙터에서 동작 모드 관련 필드를 묶어 보여줍니다.
+        [Header("Mode")]
+        // 이 컨트롤러를 동작시킬지 끌지 결정하는 수동 활성화 플래그입니다.
+        public bool isEnabled = true;
+
+        // 인스펙터에서 로봇 사이클 관련 필드를 묶어 보여줍니다.
+        [Header("Cycle")]
+        // 로봇 사이클을 시작하라는 내부 요청 플래그입니다.
+        public bool startCycle;
+        // 로봇 사이클이 현재 진행 중인지 나타내는 내부 상태 플래그입니다.
+        public bool cycleActive;
+        // 로봇 시퀀스의 현재 단계를 표시하는 상태 enum입니다.
+        public RobotStep currentStep = RobotStep.Waiting;
+
+        // 인스펙터에서 로봇 구성 요소 참조를 묶어 보여줍니다.
+        [Header("Robot Components")]
+        // 로봇 동작 애니메이션을 실행하는 Animator 컴포넌트입니다.
+        public Animator robotAnimator;
+        // 박스를 잡고 있는 물체 목록을 확인하기 위한 realvirtual Grip 컴포넌트입니다.
+        public Grip gripper;
+        // 박스 덤프 각도를 확인하기 위해 참조하는 로봇 6축 오브젝트입니다.
+        public GameObject robotAxis6;
+
+        // 인스펙터에서 PLC 출력 신호들을 묶어 보여줍니다.
+        [Header("PLC Outputs")]
+        // 로봇 그리퍼를 열라는 PLC 출력 신호입니다.
+        public PLCOutputBool gripperOpen;
+        // 로봇 그리퍼를 닫으라는 PLC 출력 신호입니다.
+        public PLCOutputBool gripperClose;
+        // realvirtual 쪽 로봇 사이클 시작 신호와 연결되는 PLC 출력 신호입니다.
+        public PLCOutputBool plcStartCycle;
+
+        // 인스펙터에서 PLC 입력 신호들을 묶어 보여줍니다.
+        [Header("PLC Inputs")]
+        // 로봇 그리퍼가 열렸는지 읽는 PLC 입력 신호입니다.
+        public PLCInputBool gripperOpened;
+        // 로봇 그리퍼가 닫혔는지 읽는 PLC 입력 신호입니다.
+        public PLCInputBool gripperClosed;
+        // 로봇 사이클 진행 상태를 외부에 알려주는 PLC 입력 신호입니다.
+        public PLCInputBool plcCycleActive;
+
+        // 인스펙터에서 디버그용 상태 값을 묶어 보여줍니다.
+        [Header("Status")]
+        // 현재 로봇 6축의 X축 회전각을 표시합니다.
+        public float axis6Rotation;
+        // 박스에서 배출한 캔 개수를 누적 표시합니다.
+        public int unloadedCanCount;
+
+        // 직전 FixedUpdate에서 startCycle이 어떤 값이었는지 저장해 상승 에지를 감지합니다.
+        private bool previousStartCycle;
+        // 같은 박스를 여러 번 비우지 않도록 언로드 처리 여부를 저장합니다.
+        private bool unloadAlreadyTriggered;
+
+        // 컴포넌트가 시작될 때 한 번 실행되는 초기화 메서드입니다.
+        private void Start()
+        {
+            // 시작 시 로봇 상태를 대기 상태로 초기화합니다.
+            currentStep = RobotStep.Waiting;
+            // 시작 시 그리퍼를 열린 상태로 명령합니다.
+            Set(gripperOpen, true);
+            // 시작 시 그리퍼 닫힘 명령은 꺼둡니다.
+            Set(gripperClose, false);
+        }
+
+        // Unity 물리 주기에 맞춰 반복 실행되는 제어 루프입니다.
+        private void FixedUpdate()
+        {
+            // 비상정지 상태이거나 컨트롤러가 꺼져 있으면 로봇 제어를 중지합니다.
+            if (ForceStop || !isEnabled)
+            {
+                // 아래 제어 로직은 실행하지 않고 빠져나갑니다.
+                return;
+            }
+
+            // 로봇 6축 오브젝트가 있으면 현재 X축 회전각을 읽고, 없으면 0으로 표시합니다.
+            axis6Rotation = robotAxis6 != null ? robotAxis6.transform.rotation.eulerAngles.x : 0f;
+
+            // 외부 PLC 시작 신호가 연결되어 있으면 그 값을 내부 startCycle에 반영합니다.
+            if (plcStartCycle != null)
+            {
+                // realvirtual 신호 값을 내부 시작 요청으로 복사합니다.
+                startCycle = plcStartCycle.Value;
+            }
+
+            // startCycle이 방금 켜졌고 아직 사이클이 진행 중이 아니면 새 사이클을 시작합니다.
+            if (startCycle && !previousStartCycle && !cycleActive)
+            {
+                // 로봇 사이클 진행 상태를 ON으로 바꿉니다.
+                cycleActive = true;
+            }
+
+            // 로봇 사이클이 진행 중이면 현재 단계에 맞는 시퀀스를 실행합니다.
+            if (cycleActive)
+            {
+                // 상태 머신의 한 단계를 실행합니다.
+                RunStep();
+            }
+
+            // 외부에서 볼 수 있도록 로봇 사이클 진행 상태를 PLC 입력 신호에 씁니다.
+            Set(plcCycleActive, cycleActive);
+            // 다음 주기에서 상승 에지를 판단하기 위해 현재 startCycle 값을 저장합니다.
+            previousStartCycle = startCycle;
+        }
+
+        // 현재 RobotStep에 따라 로봇 시퀀스를 진행하는 상태 머신입니다.
+        private void RunStep()
+        {
+            // 현재 단계에 따라 실행할 로직을 선택합니다.
+            switch (currentStep)
+            {
+                // 로봇이 대기 중인 단계입니다.
+                case RobotStep.Waiting:
+                    // 시작 신호가 한 번 처리되었으므로 외부 시작 출력을 끕니다.
+                    Set(plcStartCycle, false);
+                    // 박스를 잡으러 이동하는 애니메이션을 처음부터 재생합니다.
+                    PlayAnimation("MoveToPick");
+                    // 다음 단계로 이동합니다.
+                    currentStep = RobotStep.MoveToPick;
+                    // 이 case 처리를 종료합니다.
+                    break;
+
+                // 로봇이 박스 픽업 위치로 이동 중인 단계입니다.
+                case RobotStep.MoveToPick:
+                    // 이동 애니메이션이 끝났는지 확인합니다.
+                    if (AnimationFinished("MoveToPick"))
+                    {
+                        // 그리퍼 닫기 출력을 켭니다.
+                        Set(gripperClose, true);
+                        // 그리퍼 열기 출력을 끕니다.
+                        Set(gripperOpen, false);
+                        // 그리퍼 닫힘 대기 단계로 이동합니다.
+                        currentStep = RobotStep.CloseGripper;
+                    }
+
+                    // 이 case 처리를 종료합니다.
+                    break;
+
+                // 로봇 그리퍼가 박스를 잡을 때까지 기다리는 단계입니다.
+                case RobotStep.CloseGripper:
+                    // 그리퍼 닫힘 센서가 ON인지 확인합니다.
+                    if (IsOn(gripperClosed))
+                    {
+                        // 새 박스에 대해 아직 언로드를 수행하지 않았다고 초기화합니다.
+                        unloadAlreadyTriggered = false;
+                        // 박스를 들어 기울이는 애니메이션을 재생합니다.
+                        PlayAnimation("LiftAndDump");
+                        // 캔 배출 단계로 이동합니다.
+                        currentStep = RobotStep.DumpCans;
+                    }
+
+                    // 이 case 처리를 종료합니다.
+                    break;
+
+                // 박스를 기울여 내부 캔을 비우는 단계입니다.
+                case RobotStep.DumpCans:
+                    // 로봇 각도가 적절한 구간에 들어오면 박스 안의 MU를 제거합니다.
+                    TryUnloadBoxContents();
+                    // 덤프 애니메이션이 끝났는지 확인합니다.
+                    if (AnimationFinished("LiftAndDump"))
+                    {
+                        // 박스를 컨베이어 위에 내려놓는 애니메이션을 재생합니다.
+                        PlayAnimation("PutBoxOnConveyor");
+                        // 박스 내려놓기 단계로 이동합니다.
+                        currentStep = RobotStep.PlaceBox;
+                    }
+
+                    // 이 case 처리를 종료합니다.
+                    break;
+
+                // 박스를 컨베이어에 내려놓는 단계입니다.
+                case RobotStep.PlaceBox:
+                    // 박스 내려놓기 애니메이션이 끝났는지 확인합니다.
+                    if (AnimationFinished("PutBoxOnConveyor"))
+                    {
+                        // 그리퍼 닫기 출력을 끕니다.
+                        Set(gripperClose, false);
+                        // 그리퍼 열기 출력을 켭니다.
+                        Set(gripperOpen, true);
+                        // 그리퍼 열림 대기 단계로 이동합니다.
+                        currentStep = RobotStep.OpenGripper;
+                    }
+
+                    // 이 case 처리를 종료합니다.
+                    break;
+
+                // 로봇 그리퍼가 열릴 때까지 기다리는 단계입니다.
+                case RobotStep.OpenGripper:
+                    // 그리퍼 열림 센서가 ON인지 확인합니다.
+                    if (IsOn(gripperOpened))
+                    {
+                        // 로봇이 박스 위치에서 빠져나오는 애니메이션을 재생합니다.
+                        PlayAnimation("MoveOutFromPick");
+                        // 대기 위치 복귀 단계로 이동합니다.
+                        currentStep = RobotStep.MoveToWaitPosition;
+                    }
+
+                    // 이 case 처리를 종료합니다.
+                    break;
+
+                // 로봇이 초기 대기 위치로 복귀하는 단계입니다.
+                case RobotStep.MoveToWaitPosition:
+                    // 복귀 애니메이션이 끝났는지 확인합니다.
+                    if (AnimationFinished("MoveOutFromPick"))
+                    {
+                        // 다음 사이클을 기다리기 위해 상태를 대기로 되돌립니다.
+                        currentStep = RobotStep.Waiting;
+                        // 로봇 사이클 완료를 표시합니다.
+                        cycleActive = false;
+                    }
+
+                    // 이 case 처리를 종료합니다.
+                    break;
+            }
+        }
+
+        // 박스가 기울어진 순간 박스 안의 캔들을 제거하는 메서드입니다.
+        private void TryUnloadBoxContents()
+        {
+            // 이미 언로드했거나, 6축 회전각이 캔을 쏟기 적절한 범위가 아니면 처리하지 않습니다.
+            if (unloadAlreadyTriggered || axis6Rotation <= 70f || axis6Rotation >= 200f)
+            {
+                // 조건을 만족하지 않으므로 빠져나갑니다.
+                return;
+            }
+
+            // 그리퍼가 없거나 잡은 물체 목록이 없거나 아무것도 잡고 있지 않으면 처리하지 않습니다.
+            if (gripper == null || gripper.PickedMUs == null || gripper.PickedMUs.Count == 0)
+            {
+                // 언로드할 박스가 없으므로 빠져나갑니다.
+                return;
+            }
+
+            // 그리퍼가 잡고 있는 첫 번째 물체에서 MU 컴포넌트를 가져옵니다.
+            MU box = gripper.PickedMUs[0].GetComponent<MU>();
+            // 잡은 물체가 MU가 아니면 처리하지 않습니다.
+            if (box == null)
+            {
+                // 박스 MU가 없으므로 빠져나갑니다.
+                return;
+            }
+
+            // 박스 안에 들어 있던 캔 개수를 누적 카운트에 더합니다.
+            unloadedCanCount += box.LoadedMus.Count;
+            // realvirtual MU 기능을 사용해 박스 안의 모든 캔을 제거합니다.
+            box.UnloadAllMUs();
+            // 같은 박스에 대해 언로드가 중복 실행되지 않도록 플래그를 켭니다.
+            unloadAlreadyTriggered = true;
+        }
+
+        // 지정한 이름의 애니메이션을 처음부터 재생하는 메서드입니다.
+        private void PlayAnimation(string animationName)
+        {
+            // Animator가 연결되어 있을 때만 애니메이션을 재생합니다.
+            if (robotAnimator != null)
+            {
+                // 레이어 0에서 해당 애니메이션을 normalizedTime 0부터 재생합니다.
+                robotAnimator.Play(animationName, 0, 0f);
+            }
+        }
+
+        // 지정한 이름의 애니메이션이 끝났는지 확인하는 메서드입니다.
+        private bool AnimationFinished(string animationName)
+        {
+            // Animator가 없으면 시뮬레이션을 막지 않기 위해 완료로 판단합니다.
+            if (robotAnimator == null)
+            {
+                // 애니메이션이 없으므로 완료 상태를 반환합니다.
+                return true;
+            }
+
+            // 현재 레이어 0의 애니메이션 상태 정보를 읽습니다.
+            AnimatorStateInfo state = robotAnimator.GetCurrentAnimatorStateInfo(0);
+            // 현재 상태 이름이 원하는 애니메이션이고 재생 시간이 100% 이상이면 완료로 판단합니다.
+            return state.IsName(animationName) && state.normalizedTime >= 1f;
+        }
+
+        // PLCInputBool 신호가 연결되어 있고 ON 상태인지 확인하는 헬퍼 메서드입니다.
+        private static bool IsOn(PLCInputBool signal)
+        {
+            // 신호가 null이면 false로 보고, 연결되어 있으면 실제 Value를 반환합니다.
+            return signal != null && signal.Value;
+        }
+
+        // PLCOutputBool 신호가 null인지 확인한 뒤 안전하게 값을 쓰는 헬퍼 메서드입니다.
+        private static void Set(PLCOutputBool signal, bool value)
+        {
+            // 신호 연결이 되어 있을 때만 값을 씁니다.
+            if (signal != null)
+            {
+                // 실제 PLC 출력 신호 값을 변경합니다.
+                signal.Value = value;
+            }
+        }
+
+        // PLCInputBool 신호가 null인지 확인한 뒤 안전하게 값을 쓰는 헬퍼 메서드입니다.
+        private static void Set(PLCInputBool signal, bool value)
+        {
+            // 신호 연결이 되어 있을 때만 값을 씁니다.
+            if (signal != null)
+            {
+                // realvirtual 데모에서 상태 표시용 입력 신호 값을 갱신합니다.
+                signal.Value = value;
+            }
+        }
+    }
+}

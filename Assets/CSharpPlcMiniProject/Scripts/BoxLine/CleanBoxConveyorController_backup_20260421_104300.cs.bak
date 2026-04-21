@@ -1,0 +1,223 @@
+// 로봇 컨트롤러와 박스 컨베이어가 서로 신호를 주고받기 위해 로봇 네임스페이스를 사용합니다.
+using CSharpPlcMiniProject.Robot;
+// realvirtual의 PLC 신호 타입과 ControlLogic 기반 클래스를 사용하기 위한 네임스페이스입니다.
+using realvirtual;
+// Unity의 MonoBehaviour 계열 기능과 인스펙터 속성을 사용하기 위한 네임스페이스입니다.
+using UnityEngine;
+
+// 박스 라인 제어 코드를 프로젝트 전용 네임스페이스로 묶습니다.
+namespace CSharpPlcMiniProject.BoxLine
+{
+    // 씬에서 이 컴포넌트를 선택하면 루트 오브젝트가 선택되도록 돕는 Unity 속성입니다.
+    [SelectionBase]
+    // 박스 컨베이어를 PLC 로직처럼 제어하는 클래스입니다.
+    public sealed class CleanBoxConveyorController : ControlLogic
+    {
+        // 인스펙터에서 동작 모드 관련 필드를 묶어 보여줍니다.
+        [Header("Mode")]
+        // 이 컨트롤러를 동작시킬지 끌지 결정하는 수동 활성화 플래그입니다.
+        public bool isEnabled = true;
+
+        // 핸들링 장치가 박스 컨베이어에 요청하는 명령들을 묶어 보여줍니다.
+        [Header("Requests From Handling")]
+        // 한 줄 배치가 끝났을 때 박스를 다음 행 위치로 이동시키라는 요청입니다.
+        public bool driveNextRow;
+        // 다음 행으로 이동할 컨베이어 거리입니다.
+        public float nextRowDistance;
+        // 박스가 가득 찼거나 교체가 필요할 때 박스 교체 사이클을 시작하는 요청입니다.
+        public bool boxChangeCycle;
+
+        // 관련된 다른 PLC 컨트롤러 참조를 묶어 보여줍니다.
+        [Header("Related PLC Controllers")]
+        // 박스 교체 시 로봇 사이클을 시작하기 위해 참조하는 로봇 컨트롤러입니다.
+        public CleanRobotController robot;
+
+        // 인스펙터에서 PLC 출력 신호들을 묶어 보여줍니다.
+        [Header("PLC Outputs")]
+        // 박스 컨베이어를 정방향으로 구동하는 PLC 출력 신호입니다.
+        public PLCOutputBool startConveyor;
+        // 박스 컨베이어를 역방향으로 구동하는 PLC 출력 신호입니다.
+        public PLCOutputBool startConveyorBackwards;
+        // 박스가 gantry 투입 위치에 도착했음을 표시하는 램프 출력 신호입니다.
+        public PLCOutputBool lampBoxAtPosition;
+        // 박스 교체 사이클이 진행 중임을 표시하는 램프 출력 신호입니다.
+        public PLCOutputBool lampBoxChangeCycle;
+
+        // 인스펙터에서 PLC 입력 신호들을 묶어 보여줍니다.
+        [Header("PLC Inputs")]
+        // 박스가 gantry 투입 위치 센서에 감지되는지 읽는 PLC 입력 신호입니다.
+        public PLCInputBool sensorGantryOccupied;
+        // 박스가 로봇 작업 위치 센서에 감지되는지 읽는 PLC 입력 신호입니다.
+        public PLCInputBool sensorRobotOccupied;
+        // 박스 컨베이어의 현재 위치 값을 읽는 PLC 입력 신호입니다.
+        public PLCInputFloat conveyorPosition;
+
+        // 직전 FixedUpdate에서 driveNextRow가 어떤 값이었는지 저장해 상승 에지를 감지합니다.
+        private bool previousDriveNextRow;
+        // 직전 FixedUpdate에서 로봇 사이클이 진행 중이었는지 저장합니다.
+        private bool previousRobotCycleActive;
+        // 박스 교체 사이클이 실제로 시작되었는지 기억하는 내부 플래그입니다.
+        private bool boxChangeStarted;
+        // 다음 행 이동을 완료해야 하는 목표 컨베이어 위치입니다.
+        private float rowTargetPosition;
+
+        // 컴포넌트가 시작될 때 한 번 실행되는 초기화 메서드입니다.
+        private void Start()
+        {
+            // 시작 시 다음 행 이동 요청을 꺼진 상태로 초기화합니다.
+            driveNextRow = false;
+            // 시작 시 목표 위치를 0으로 초기화합니다.
+            rowTargetPosition = 0f;
+        }
+
+        // Unity 물리 주기에 맞춰 반복 실행되는 제어 루프입니다.
+        private void FixedUpdate()
+        {
+            // 비상정지 상태이거나 컨트롤러가 꺼져 있으면 컨베이어를 정지합니다.
+            if (ForceStop || !isEnabled)
+            {
+                // 정방향/역방향 출력을 모두 false로 내려 안전하게 정지시킵니다.
+                StopConveyor();
+                // 아래 제어 로직은 실행하지 않고 빠져나갑니다.
+                return;
+            }
+
+            // 핸들링 장치가 요청한 다음 행 이동을 처리합니다.
+            RunNextRowRequest();
+            // 박스 교체 사이클 요청을 처리합니다.
+            RunBoxChangeRequest();
+            // 특별 요청이 없을 때 박스를 gantry 위치까지 공급하는 일반 이송을 처리합니다.
+            RunNormalFeed();
+            // 센서와 사이클 상태에 맞춰 램프 및 완료 조건을 갱신합니다.
+            UpdateLamps();
+
+            // 다음 주기에서 상승 에지를 판단하기 위해 현재 driveNextRow 값을 저장합니다.
+            previousDriveNextRow = driveNextRow;
+            // 다음 주기에서 로봇 사이클 완료를 판단하기 위해 현재 로봇 동작 상태를 저장합니다.
+            previousRobotCycleActive = robot != null && robot.cycleActive;
+        }
+
+        // 박스를 다음 행 위치로 이동시키는 요청을 처리하는 메서드입니다.
+        private void RunNextRowRequest()
+        {
+            // driveNextRow가 방금 켜졌고 박스 교체 중이 아니면 목표 위치를 계산하고 컨베이어를 구동합니다.
+            if (!previousDriveNextRow && driveNextRow && !boxChangeCycle)
+            {
+                // 현재 위치에 요청 거리만큼 더한 값을 목표 위치로 설정합니다.
+                rowTargetPosition = Value(conveyorPosition) + nextRowDistance;
+                // 박스를 다음 행 위치로 보내기 위해 정방향 컨베이어를 켭니다.
+                Set(startConveyor, true);
+                // 다음 행 이동 중에는 역방향 컨베이어를 끕니다.
+                Set(startConveyorBackwards, false);
+            }
+
+            // 다음 행 이동 중이고 현재 위치가 목표 위치 이상이면 이동 요청을 완료 처리합니다.
+            if (driveNextRow && Value(conveyorPosition) >= rowTargetPosition)
+            {
+                // 다음 행 이동 요청을 끕니다.
+                driveNextRow = false;
+                // 목표 위치 값을 초기화합니다.
+                rowTargetPosition = 0f;
+            }
+        }
+
+        // 박스 교체 사이클을 처리하는 메서드입니다.
+        private void RunBoxChangeRequest()
+        {
+            // 로봇이 없거나, 행 이동 중이거나, 교체 요청이 없거나, 로봇 시작 신호가 이미 켜져 있으면 처리하지 않습니다.
+            if (robot == null || driveNextRow || !boxChangeCycle || robot.startCycle)
+            {
+                // 현재 조건에서는 박스 교체 로직을 실행하지 않습니다.
+                return;
+            }
+
+            // 로봇 위치 센서에 박스가 아직 없으면 박스를 로봇 쪽으로 이동시킵니다.
+            if (!IsOn(sensorRobotOccupied))
+            {
+                // 로봇 위치로 박스를 보내기 위해 역방향 컨베이어를 켭니다.
+                Set(startConveyorBackwards, true);
+                // 이때 정방향 컨베이어는 끕니다.
+                Set(startConveyor, false);
+                // 실제 박스 교체 흐름이 시작되었음을 기록합니다.
+                boxChangeStarted = true;
+                // 로봇 위치에 도착할 때까지 이번 주기는 여기서 끝냅니다.
+                return;
+            }
+
+            // 박스가 로봇 위치에 도착했으므로 컨베이어를 정지합니다.
+            StopConveyor();
+            // 로봇에게 박스 처리 사이클을 시작하라고 요청합니다.
+            robot.startCycle = true;
+        }
+
+        // 일반 박스 공급 동작을 처리하는 메서드입니다.
+        private void RunNormalFeed()
+        {
+            // 행 이동이나 박스 교체 중이면 일반 공급 로직을 실행하지 않습니다.
+            if (driveNextRow || boxChangeCycle)
+            {
+                // 다른 시퀀스가 컨베이어를 제어하고 있으므로 빠져나갑니다.
+                return;
+            }
+
+            // gantry 위치에 박스가 없으면 컨베이어를 켜고, 박스가 있으면 컨베이어를 멈춥니다.
+            Set(startConveyor, !IsOn(sensorGantryOccupied));
+            // 일반 공급 중에는 역방향 컨베이어를 끕니다.
+            Set(startConveyorBackwards, false);
+        }
+
+        // 램프 출력과 로봇 사이클 완료 후 상태 정리를 처리하는 메서드입니다.
+        private void UpdateLamps()
+        {
+            // 박스가 gantry 위치에 있으면 위치 표시 램프를 켭니다.
+            Set(lampBoxAtPosition, IsOn(sensorGantryOccupied));
+            // 박스 교체 사이클 플래그에 맞춰 교체 램프를 켭니다.
+            Set(lampBoxChangeCycle, boxChangeCycle);
+
+            // 로봇 사이클이 직전에는 켜져 있었고 지금은 꺼졌으며, 박스 교체가 시작된 상태라면 교체 완료로 판단합니다.
+            if (robot != null && previousRobotCycleActive && !robot.cycleActive && boxChangeStarted)
+            {
+                // 로봇 시작 요청을 끕니다.
+                robot.startCycle = false;
+                // 박스 교체 요청을 완료 처리합니다.
+                boxChangeCycle = false;
+                // 내부 교체 진행 플래그를 초기화합니다.
+                boxChangeStarted = false;
+            }
+        }
+
+        // 컨베이어의 모든 구동 출력을 끄는 안전 정지 메서드입니다.
+        private void StopConveyor()
+        {
+            // 정방향 컨베이어 출력을 끕니다.
+            Set(startConveyor, false);
+            // 역방향 컨베이어 출력을 끕니다.
+            Set(startConveyorBackwards, false);
+        }
+
+        // PLCInputBool 신호가 연결되어 있고 ON 상태인지 확인하는 헬퍼 메서드입니다.
+        private static bool IsOn(PLCInputBool signal)
+        {
+            // 신호가 null이면 false로 보고, 연결되어 있으면 실제 Value를 반환합니다.
+            return signal != null && signal.Value;
+        }
+
+        // PLCInputFloat 신호 값을 안전하게 읽는 헬퍼 메서드입니다.
+        private static float Value(PLCInputFloat signal)
+        {
+            // 신호가 null이면 0으로 보고, 연결되어 있으면 실제 Value를 반환합니다.
+            return signal != null ? signal.Value : 0f;
+        }
+
+        // PLCOutputBool 신호가 null인지 확인한 뒤 안전하게 값을 쓰는 헬퍼 메서드입니다.
+        private static void Set(PLCOutputBool signal, bool value)
+        {
+            // 신호 연결이 되어 있을 때만 값을 씁니다.
+            if (signal != null)
+            {
+                // 실제 PLC 출력 신호 값을 변경합니다.
+                signal.Value = value;
+            }
+        }
+    }
+}

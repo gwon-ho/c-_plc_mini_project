@@ -1,0 +1,26 @@
+// 핸들링 장치 제어 상태 enum을 프로젝트 전용 네임스페이스로 묶습니다.
+namespace CSharpPlcMiniProject.Handling
+{
+    // 핸들링 장치가 어떤 순서 단계에 있는지 표현하는 상태 목록입니다.
+    public enum HandlingStep
+    {
+        // 캔 센서가 ON 되기를 기다리는 대기 상태입니다.
+        WaitingForCan,
+        // 캔을 집기 위해 픽업 위치로 이동하는 상태입니다.
+        MoveToPick,
+        // 그리퍼를 닫아 캔을 잡는 상태입니다.
+        CloseGripper,
+        // 캔을 잡은 뒤 안전 높이로 들어 올리는 상태입니다.
+        LiftCan,
+        // 캔을 박스 위 배치 위치로 수평 이동하는 상태입니다.
+        MoveToPlace,
+        // 캔을 박스 안에 넣기 위해 아래로 내리는 상태입니다.
+        LowerToPlace,
+        // 그리퍼를 열어 캔을 놓는 상태입니다.
+        OpenGripper,
+        // 캔을 놓은 뒤 다시 안전 높이로 올라가는 상태입니다.
+        LiftAfterPlace,
+        // 다음 캔을 기다리기 위해 대기 위치로 복귀하는 상태입니다.
+        ReturnToWaitPosition
+    }
+}

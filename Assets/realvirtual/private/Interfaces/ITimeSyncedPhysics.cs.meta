@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: ac268955c056cf643841d62f83f101af
+AssetOrigin:
+  serializedVersion: 1
+  productId: 303030
+  packageName: realvirtual.io Digital Twin Starter 6
+  packageVersion: 6.0.11-8733
+  assetPath: Assets/realvirtual/private/Interfaces/ITimeSyncedPhysics.cs
+  uploadId: 880772
