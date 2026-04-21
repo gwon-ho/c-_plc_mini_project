@@ -1,4 +1,4 @@
-﻿# C# PLC Mini Project Troubleshooting Summary
+<img width="1022" height="605" alt="19-30-44+(1)" src="https://github.com/user-attachments/assets/7e0d782b-fb43-41d3-8227-30835cb8d52e" />﻿# C# PLC Mini Project Troubleshooting Summary
 
 이 문서는 Unity와 realvirtual 기반의 `DemoRealvirtualOld_CleanControl` 씬을 PLC식 C# 제어 구조로 정리하면서 발생한 주요 문제, 원인 분석, 시도한 해결 방법, 최종 결과를 기록한 문서입니다.
 
@@ -15,6 +15,7 @@
 ### 문제
 
 캔을 감지하고 집은 뒤 박스 쪽으로 이동해야 하는데, Gantry Y축이 움직이지 않았습니다.
+<img width="2986" height="1806" alt="image" src="https://github.com/user-attachments/assets/8f648f6a-19dd-418b-ad42-8250963d779b" />
 
 관찰된 상태:
 
@@ -23,7 +24,7 @@
 - `Gantry Y Position Status`는 변하지 않음
 - `Gantry Y Drive Is Running Status`가 켜지지 않음
 - Inspector에서 `Target Start Move`를 수동 체크해도 바로 꺼짐
-
+ 
 ### 발생 원인
 
 `Target Start Move`는 수동으로 유지하는 값이 아니라 `GantryYStart` PLC Output에 의해 매 프레임 제어되는 값이었습니다. 실제 이동이 안 된 더 큰 원인은 Gantry Drive의 `Smooth Acceleration` 옵션이었습니다.
@@ -48,11 +49,15 @@ drive.SmoothAcceleration = false;
 
 Gantry Y축이 정상적으로 움직였고, 캔을 들어 올린 뒤 박스 위치로 이동하는 흐름이 가능해졌습니다.
 
+
+
 ## 2. 캔 적재 후 불필요한 동작이 반복되는 문제
 
 ### 문제
 
 캔을 박스에 내려놓은 뒤 다음과 같은 이상 동작이 발생했습니다.
+<img width="1432" height="754" alt="18-13-30 (1)" src="https://github.com/user-attachments/assets/a6904bc6-0ef3-483b-b4bf-3d19d0c681d2" />
+
 
 - 캔을 놓고 올라감
 - 다시 같은 위치로 내려감
@@ -97,6 +102,7 @@ Gantry Y축이 정상적으로 움직였고, 캔을 들어 올린 뒤 박스 위
 ### 문제
 
 처음 구조에서는 `WaitingForCan`에서 캔이 감지되면 그리퍼 열기 명령을 내린 직후 바로 픽업 위치로 이동했습니다.
+<img width="1022" height="605" alt="19-30-44+(1)" src="https://github.com/user-attachments/assets/e422c362-7c65-4354-9188-67a0b401b660" />
 
 예시:
 
@@ -150,6 +156,8 @@ WaitingForCan
 가장 큰 문제였습니다.
 
 `OpenGripper` 상태에서는 그리퍼가 열릴 때까지 기다려야 하는데, 실제 화면에서는 그리퍼가 열리는 도중 Z축 또는 그리퍼가 위로 올라가는 것처럼 보였습니다.
+<img width="1790" height="942" alt="18-25-32" src="https://github.com/user-attachments/assets/3a436d72-67fb-4197-9716-55fb19ccea5e" />
+
 
 관찰된 상태:
 
